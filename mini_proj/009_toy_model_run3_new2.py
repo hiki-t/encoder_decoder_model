@@ -115,7 +115,7 @@ class EncoderDecoderModel(nn.Module):
         self.clip_m_v_proj = self.clip_m.visual_projection
         self.clip_m_t = self.clip_m.text_model
         self.clip_m_t_proj = self.clip_m.text_projection
-        self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32", use_fast=True)
+        self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         # Projections
         if config.use_mlp:
             self.proj_img = MLPBlock(config.model_d, config.model_d, config.model_d)
