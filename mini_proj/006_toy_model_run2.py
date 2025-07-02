@@ -5,10 +5,13 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 from transformers import CLIPModel, CLIPProcessor, GPT2LMHeadModel, GPT2Tokenizer
 from datasets import load_dataset, Dataset
-from huggingface_hub import HfApi, HfFolder, Repository, create_repo, upload_folder
+from huggingface_hub import HfApi, HfFolder, Repository, create_repo, upload_folder, hf_hub_download
 import os
 import numpy as np
 import wandb
+
+# in order to suppress warning message
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # =====================
 # Config
@@ -31,6 +34,7 @@ class Config:
     use_amp = True  # Use mixed precision
     wandb_project = 'enc_dec_model_from_scratch' # this need to modify 
     wandb_entity = 'htsujimu-ucl' # this need to modify 
+    is_there_trained_w = True
 
 # =====================
 # Data Loader
@@ -203,7 +207,9 @@ def train_one_epoch(model, dataloader, optimizer, config, epoch=0, step=0):
     for i, batch in enumerate(dataloader):
         img = batch['image']
         text = [c[0] if isinstance(c, list) else c for c in batch['caption']]
-        with torch.cuda.amp.autocast(enabled=config.use_amp):
+        # with torch.cuda.amp.autocast(enabled=config.use_amp):
+        with torch.amp.autocast('cuda', enabled=config.use_amp):
+
             out = model(img, text)
             loss = out.loss / config.grad_accum_steps
         print(f"Batch {batch_count+1} loss(un-normalized): {loss.item() * config.grad_accum_steps:.4f}")  # Print per-batch loss (un-normalized)
@@ -235,7 +241,8 @@ def validate(model, dataloader, config, epoch=0):
         for batch in dataloader:
             img = batch['image']
             text = [c[0] if isinstance(c, list) else c for c in batch['caption']]
-            with torch.cuda.amp.autocast(enabled=config.use_amp):
+            # with torch.cuda.amp.autocast(enabled=config.use_amp):
+            with torch.amp.autocast('cuda', enabled=config.use_amp):
                 out = model(img, text)
                 loss = out.loss
             total_loss += loss.item()
@@ -309,7 +316,26 @@ if __name__ == "__main__":
         num_workers=config.num_workers, pin_memory=config.pin_memory
     )
     print("setting models")
-    model = EncoderDecoderModel(config)
+
+    if config.is_there_trained_w:
+        # 1. Load decoder and tokenizer
+        decoder = GPT2LMHeadModel.from_pretrained("hiki-t/enc_dec_model")
+        tokenizer = GPT2Tokenizer.from_pretrained("hiki-t/enc_dec_model")
+        # 2. Load projection layers
+        proj_path = hf_hub_download(repo_id="hiki-t/enc_dec_model", filename="projection_layers.pt")
+        proj_state = torch.load(proj_path, map_location=config.device)
+        # 3. Reconstruct model
+        model = EncoderDecoderModel(config)
+        model.dec_model = decoder
+        model.dec_tokenizer = tokenizer
+        model.lin_m_v.load_state_dict(proj_state['lin_m_v'])
+        model.lin_m_t.load_state_dict(proj_state['lin_m_t'])
+        model.lin_m_vt4dec.load_state_dict(proj_state['lin_m_vt4dec'])
+        model.to(config.device)
+        model.eval()
+    else:
+        model = EncoderDecoderModel(config)
+
     criterion, optimizer = get_loss_and_optimizer(model, config)
     # Print number of batches
     n_train_batches = num_batches(len(train_dataset), config.batch_size)
