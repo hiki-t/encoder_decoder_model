@@ -92,7 +92,7 @@ class EncoderDecoderModel(nn.Module):
 
     def forward(self, img, text):
         cfg = self.config
-        batch_size = cfg.batch_size
+        batch_size = len(img)
         # Image to embedding
         inputs_v = self.processor(images=img, return_tensors="pt").pixel_values.to(cfg.device)
         outs_v1 = self.clip_m_v(inputs_v).pooler_output
