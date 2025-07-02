@@ -24,13 +24,13 @@ class Config:
     lr = 5e-5
     weight_decay = 0.01
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    epochs = 10
+    epochs = 1
     grad_accum_steps = 1  # Number of steps to accumulate gradients
     num_workers = 4  # DataLoader workers
     pin_memory = True  # DataLoader pin_memory
     use_amp = True  # Use mixed precision
-    wandb_project = 'encdec-toy'
-    wandb_run_name = 'run1'
+    wandb_project = 'enc_dec_model_from_scratch' # this need to modify 
+    wandb_entity = 'htsujimu-ucl' # this need to modify 
 
 # =====================
 # Data Loader
@@ -291,7 +291,7 @@ def num_batches(dataset_len, batch_size):
 # =====================
 if __name__ == "__main__":
     config = Config()
-    wandb.init(project=config.wandb_project, name=config.wandb_run_name, config=vars(config))
+    wandb.init(project=config.wandb_project, entity=config.wandb_entity, config=vars(config))
     # Load the full dataset (e.g., use 'test' split as a placeholder for all data if needed)
     print("loading data")
     dataset = load_flickr30k(split="test")  # You may want to use 'train' or merge splits for more data

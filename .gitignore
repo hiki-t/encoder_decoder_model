@@ -1,0 +1,37 @@
+# Ignore Python cache
+__pycache__/
+*.py[cod]
+
+# Ignore environment files
+.env
+venv/
+.env.*
+
+# Ignore IDE/editor files
+.vscode/
+*.swp
+.idea/
+
+# Ignore logs and outputs
+*.log
+*.out
+
+# Ignore data files
+*.csv
+*.json
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# ignore data
+.data
+
+# ignore trained model
+.tf_model_mnist
+
+# debugging files
+.test
+
+# ignore these dir
+MLX_W4_DD_Transfer_Learning
