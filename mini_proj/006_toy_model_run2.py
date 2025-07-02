@@ -8,6 +8,7 @@ from datasets import load_dataset, Dataset
 from huggingface_hub import HfApi, HfFolder, Repository, create_repo, upload_folder
 import os
 import numpy as np
+import wandb
 
 # =====================
 # Config
@@ -28,6 +29,8 @@ class Config:
     num_workers = 4  # DataLoader workers
     pin_memory = True  # DataLoader pin_memory
     use_amp = True  # Use mixed precision
+    wandb_project = 'encdec-toy'
+    wandb_run_name = 'run1'
 
 # =====================
 # Data Loader
@@ -157,7 +160,7 @@ def get_loss_and_optimizer(model, config):
 # =====================
 # Training and Validation
 # =====================
-def train_one_epoch(model, dataloader, optimizer, config):
+def train_one_epoch(model, dataloader, optimizer, config, epoch=0):
     model.train()
     total_loss = 0
     batch_count = 0
@@ -169,6 +172,8 @@ def train_one_epoch(model, dataloader, optimizer, config):
         with torch.cuda.amp.autocast(enabled=config.use_amp):
             out = model(img, text)
             loss = out.loss / config.grad_accum_steps
+        print(f"Batch {batch_count+1} loss(un-normalized): {loss.item() * config.grad_accum_steps:.4f}")  # Print per-batch loss (un-normalized)
+        wandb.log({"batch_loss": loss.item() * config.grad_accum_steps, "epoch": epoch, "batch": batch_count+1}, commit=False)
         if scaler is not None:
             scaler.scale(loss).backward()
         else:
@@ -183,11 +188,12 @@ def train_one_epoch(model, dataloader, optimizer, config):
             torch.cuda.empty_cache()
         total_loss += loss.item() * config.grad_accum_steps
         batch_count += 1
-        print(f"batch counter {batch_count}")
         del loss, out  # Free memory
+    avg_loss = total_loss / len(dataloader)
+    wandb.log({"train_avg_loss": avg_loss, "epoch": epoch})
     return total_loss / len(dataloader)
 
-def validate(model, dataloader, config):
+def validate(model, dataloader, config, epoch=0):
     model.eval()
     total_loss = 0
     with torch.no_grad():
@@ -200,6 +206,8 @@ def validate(model, dataloader, config):
             total_loss += loss.item()
             del loss, out  # Free memory
             torch.cuda.empty_cache()
+    avg_loss = total_loss / len(dataloader)
+    wandb.log({"val_avg_loss": avg_loss, "epoch": epoch})
     return total_loss / len(dataloader)
 
 def save_model_locally(model, config, save_dir="./trained_model"):
@@ -249,6 +257,7 @@ def num_batches(dataset_len, batch_size):
 # =====================
 if __name__ == "__main__":
     config = Config()
+    wandb.init(project=config.wandb_project, name=config.wandb_run_name, config=vars(config))
     # Load the full dataset (e.g., use 'test' split as a placeholder for all data if needed)
     print("loading data")
     dataset = load_flickr30k(split="test")  # You may want to use 'train' or merge splits for more data
@@ -275,12 +284,13 @@ if __name__ == "__main__":
     # Train/validate loop (example, 1 epoch)
     for epoch in range(config.epochs):
         print("training model")
-        train_loss = train_one_epoch(model, train_dataloader, optimizer, config)
+        train_loss = train_one_epoch(model, train_dataloader, optimizer, config, epoch=epoch)
         print("testing model")
-        val_loss = validate(model, test_dataloader, config)
+        val_loss = validate(model, test_dataloader, config, epoch=epoch)
         print(f"Epoch{epoch+1}, Train loss: {train_loss:.4f}, Val loss: {val_loss:.4f}")
         print("saving model")
         # Save and push model
         save_model_locally(model, config, save_dir="./trained_model")
         push_model_to_hf(save_dir="./trained_model", repo_id="hiki-t/enc_dec_model")
     torch.cuda.empty_cache()  # Final memory cleanup
+    wandb.finish()
