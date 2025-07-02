@@ -24,7 +24,7 @@ class Config:
     lr = 5e-5
     weight_decay = 0.01
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    epochs = 1
+    epochs = 10
     grad_accum_steps = 1  # Number of steps to accumulate gradients
     num_workers = 4  # DataLoader workers
     pin_memory = True  # DataLoader pin_memory
