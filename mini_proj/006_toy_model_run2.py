@@ -194,7 +194,7 @@ def get_loss_and_optimizer(model, config):
 # =====================
 # Training and Validation
 # =====================
-def train_one_epoch(model, dataloader, optimizer, config, epoch=0):
+def train_one_epoch(model, dataloader, optimizer, config, epoch=0, step=0):
     model.train()
     total_loss = 0
     batch_count = 0
@@ -207,7 +207,7 @@ def train_one_epoch(model, dataloader, optimizer, config, epoch=0):
             out = model(img, text)
             loss = out.loss / config.grad_accum_steps
         print(f"Batch {batch_count+1} loss(un-normalized): {loss.item() * config.grad_accum_steps:.4f}")  # Print per-batch loss (un-normalized)
-        wandb.log({"batch_loss": loss.item() * config.grad_accum_steps, "epoch": epoch, "batch": batch_count+1}, commit=False)
+        wandb.log({"batch_loss": loss.item() * config.grad_accum_steps, "epoch": epoch, "batch": batch_count+1}, step=step)
         if scaler is not None:
             scaler.scale(loss).backward()
         else:
@@ -223,9 +223,10 @@ def train_one_epoch(model, dataloader, optimizer, config, epoch=0):
         total_loss += loss.item() * config.grad_accum_steps
         batch_count += 1
         del loss, out  # Free memory
+        step += 1
     avg_loss = total_loss / len(dataloader)
     wandb.log({"train_avg_loss": avg_loss, "epoch": epoch})
-    return total_loss / len(dataloader)
+    return total_loss / len(dataloader), step
 
 def validate(model, dataloader, config, epoch=0):
     model.eval()
@@ -316,9 +317,10 @@ if __name__ == "__main__":
     print(f"Train set: {len(train_dataset)} samples, {n_train_batches} batches (batch_size={config.batch_size})")
     print(f"Test set: {len(test_dataset)} samples, {n_test_batches} batches (batch_size={config.batch_size})")
     # Train/validate loop (example, 1 epoch)
+    step = 0
     for epoch in range(config.epochs):
         print("training model")
-        train_loss = train_one_epoch(model, train_dataloader, optimizer, config, epoch=epoch)
+        train_loss, step = train_one_epoch(model, train_dataloader, optimizer, config, epoch=epoch, step=step)
         print("testing model")
         val_loss = validate(model, test_dataloader, config, epoch=epoch)
         print(f"Epoch{epoch+1}, Train loss: {train_loss:.4f}, Val loss: {val_loss:.4f}")
