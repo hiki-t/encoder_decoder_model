@@ -34,4 +34,4 @@ Thumbs.db
 .test
 
 # ignore these dir
-MLX_W4_DD_Transfer_Learning
+./mini_proj/MLX_W4_DD_Transfer_Learning
