@@ -138,9 +138,6 @@ class EncoderDecoderModel(nn.Module):
             labels = F.pad(labels, (0, pad_amt), value=-100)
         elif labels.shape[1] > seq_len:
             labels = labels[:, :seq_len]
-        # print(attention_mask.shape)
-        # print(inputs_embeds4dec_m.shape)
-        # print(labels.shape)
         # Decoder
         out_dec = self.dec_model(
             inputs_embeds=inputs_embeds4dec_m,
@@ -148,6 +145,43 @@ class EncoderDecoderModel(nn.Module):
             labels=labels,
         )
         return out_dec
+
+    @torch.no_grad()
+    def generate_from_image(self, img, max_length=50, device=None):
+        """
+        Generate text from a single image (PIL Image).
+        """
+        cfg = self.config
+        device = device or cfg.device
+        self.eval()
+
+        # Preprocess image
+        inputs_v = self.processor(images=[img], return_tensors="pt").pixel_values.to(device)
+        outs_v1 = self.clip_m_v(inputs_v).pooler_output
+        outs_v_fin = self.clip_m_v_proj(outs_v1)
+        projected_image_embed = self.lin_m_v(outs_v_fin)
+        projected_image_embed = projected_image_embed.view(1, cfg.prefix_length, cfg.lm_embed_v_dim)
+
+        # Prepare prefix for decoder
+        inputs_embeds = self.lin_m_vt4dec(projected_image_embed)
+
+        # Prepare attention mask
+        prefix_attention_mask = torch.ones(1, cfg.prefix_length).to(device)
+
+        # Generate tokens using GPT2
+        generated = self.dec_model.generate(
+            inputs_embeds=inputs_embeds,
+            attention_mask=prefix_attention_mask,
+            max_length=cfg.prefix_length + max_length,
+            pad_token_id=self.dec_tokenizer.eos_token_id,
+            eos_token_id=self.dec_tokenizer.eos_token_id,
+            do_sample=True,  # or False for greedy
+            num_beams=1,     # or >1 for beam search
+        )
+
+        # Remove prefix tokens and decode
+        generated_text = self.dec_tokenizer.decode(generated[0][cfg.prefix_length:], skip_special_tokens=True)
+        return generated_text
 
 # =====================
 # Loss and Optimizer
